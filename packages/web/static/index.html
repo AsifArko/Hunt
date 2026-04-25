@@ -8,33 +8,89 @@
   </head>
   <body>
     <header class="page-header">
-      <h1>Hunt Dashboard</h1>
+      <div>
+        <p class="eyebrow">Clone Intelligence</p>
+        <h1>Hunt</h1>
+      </div>
       <div class="auth-controls">
         <button id="login-btn" type="button">Login with GitHub</button>
-        <button id="logout-btn" type="button">Logout</button>
+        <button id="logout-btn" type="button" class="ghost">Logout</button>
       </div>
     </header>
 
     <main class="layout">
       <aside class="sidebar">
-        <h2>Repositories</h2>
-        <div class="token-box">
-          <label for="token-input">Session token</label>
-          <textarea id="token-input" rows="3" placeholder="Paste token from /auth/github/callback response"></textarea>
-          <button id="save-token-btn" type="button">Save token</button>
+        <h2 class="section-title">Repositories</h2>
+        <div class="panel connect-box">
+          <h3>Connect Repository</h3>
+          <label for="repo-owner-input">Owner</label>
+          <input id="repo-owner-input" type="text" placeholder="AsifArko" />
+          <label for="repo-name-input">Repository Name</label>
+          <input id="repo-name-input" type="text" placeholder="clone-intel" />
+          <label for="repo-id-input">GitHub Repository ID</label>
+          <input id="repo-id-input" type="text" placeholder="123456789" />
+          <label for="repo-branch-input">Default Branch</label>
+          <input
+            id="repo-branch-input"
+            type="text"
+            placeholder="master"
+            value="master"
+          />
+          <button id="connect-repo-btn" type="button">
+            Connect Repository
+          </button>
         </div>
+        <div class="panel token-box">
+          <label for="token-input">Session Token (Optional)</label>
+          <textarea
+            id="token-input"
+            rows="2"
+            placeholder="Use only if you want manual token auth fallback"
+          ></textarea>
+          <button id="save-token-btn" type="button" class="ghost">
+            Save Token
+          </button>
+        </div>
+        <span class="connected-label">Connected Repositories</span>
         <div id="repo-list" class="repo-list"></div>
       </aside>
 
       <section class="content">
-        <div id="status" class="status"></div>
-        <article>
-          <h2 id="repo-title">Repository details</h2>
-          <canvas id="clone-chart" width="800" height="260"></canvas>
-        </article>
-        <article>
-          <h3>Identity claims</h3>
-          <div id="claims-list"></div>
+        <article class="panel">
+          <div class="title-row">
+            <h2 id="repo-title">Repository Details</h2>
+            <div class="repo-meta-wrap">
+              <p id="repo-meta" class="repo-meta">
+                Connect and select a repository to view analytics.
+              </p>
+            </div>
+          </div>
+          <div class="stats-grid">
+            <div class="stat-card">
+              <p class="stat-label">Total Clones</p>
+              <p id="stat-total-clones" class="stat-value">0</p>
+            </div>
+            <div class="stat-card">
+              <p class="stat-label">Unique Cloners</p>
+              <p id="stat-unique-cloners" class="stat-value">0</p>
+            </div>
+            <div class="stat-card">
+              <p class="stat-label">Data Points</p>
+              <p id="stat-metric-points" class="stat-value">0</p>
+            </div>
+            <div class="stat-card">
+              <p class="stat-label">Last Synced</p>
+              <p id="stat-last-sync" class="stat-value compact">-</p>
+            </div>
+          </div>
+          <div class="chart-wrap">
+            <div class="chart-header">
+              <h3>Clone Activity Trend</h3>
+              <p>Total clones (solid) vs unique cloners (dashed)</p>
+            </div>
+            <div id="chart-tooltip" class="chart-tooltip" hidden></div>
+            <canvas id="clone-chart" width="1000" height="320"></canvas>
+          </div>
         </article>
       </section>
     </main>

@@ -2,6 +2,12 @@
 
 Hunt is a framework-free, modular, TypeScript monorepo that helps repository owners understand clone activity around their GitHub projects.
 
+## Dashboard preview
+
+The web dashboard (served at `/dashboard` when the server is running) lists connected repositories, shows clone traffic summary stats, and charts total clones versus unique cloners over time.
+
+![Hunt dashboard: repository list, stats, and clone activity trend](screenshots/Dashboard.png)
+
 It combines:
 - a Node.js HTTP API server,
 - a reusable Node SDK for signed ingestion,
@@ -13,6 +19,7 @@ It combines:
 
 ## Table of contents
 
+- [Dashboard preview](#dashboard-preview)
 - [What the application does](#what-the-application-does)
 - [Important GitHub limitation](#important-github-limitation)
 - [Architecture](#architecture)
@@ -38,20 +45,20 @@ Hunt provides infrastructure to:
 2. Connect repositories and manage repository-level settings.
 3. Ingest signed telemetry signals from integrated projects (SDK).
 4. Store and deduplicate clone traffic snapshots from GitHub Traffic APIs.
-5. Capture identity claims (opt-in, authenticated user context).
-6. Expose analytics endpoints and a lightweight dashboard.
+5. Expose analytics endpoints and a lightweight dashboard.
 
 ---
 
 ## Important GitHub limitation
 
-GitHub does **not** expose the identity of every public `git clone` user directly.
+For **public** repositories, GitHub does not tell you *who* performed each `git clone`. Traffic APIs only expose **aggregate** counts and **unique cloner** estimates per day—not GitHub usernames, emails, or IP addresses for each cloner.
 
-Hunt is therefore designed around:
-- aggregate clone metrics (from GitHub traffic endpoints),
-- signed integration signals,
-- and explicit identity claims (authenticated/opt-in),
-rather than claiming guaranteed identity for every clone event.
+Hunt focuses on what the platform **does** allow:
+
+- **Clone traffic** from GitHub (time series: totals, unique cloners per day).
+- **Optional signed signals** from codebases that embed `@hunt/sdk-node` (your app’s own events—not GitHub’s clone identity).
+
+**There is no supported way** to list “everyone who cloned this repo and their GitHub user” for arbitrary public traffic. Any product that implies otherwise is either using something outside public clone data or is misrepresenting what is possible.
 
 ---
 
@@ -163,14 +170,12 @@ sequenceDiagram
   - `PATCH /v1/repos/:repoId/settings`
 - Ingestion:
   - `POST /v1/signals` (HMAC signature + idempotency + rate limit + sanitization)
-  - `POST /v1/claims`
 - Analytics reads:
   - `GET /v1/repos/:repoId/metrics/clones`
-  - `GET /v1/repos/:repoId/claims`
 - Metrics poller:
   - GitHub clone traffic fetching + retry/backoff + dedupe persistence
 - Dashboard:
-  - `/dashboard` static UI with repo list, clone chart, claims list
+  - `/dashboard` static UI with repo list and clone activity chart
 - Node SDK:
   - signed capture, retry/timeout, optional file-backed queue
 - Hardening:
@@ -298,12 +303,10 @@ createServer((req, res) => void app.handle(req, res)).listen(4000);
 - `GET /v1/repos/:repoId`
 - `PATCH /v1/repos/:repoId/settings`
 - `GET /v1/repos/:repoId/metrics/clones`
-- `GET /v1/repos/:repoId/claims`
 
 ### Ingestion
 
 - `POST /v1/signals`
-- `POST /v1/claims`
 
 ---
 
@@ -377,7 +380,7 @@ Coverage includes:
 
 ## Current limitations and roadmap notes
 
-- GitHub clone identity cannot be fully resolved for every clone without user participation.
+- You cannot list individual GitHub users who ran `git clone` on a public repo; Hunt surfaces traffic aggregates and optional in-app signals only.
 - Some runtime stores are in-memory defaults (state/rate-limit) and should be replaced with distributed stores in multi-instance production.
 - Dashboard is intentionally minimal and framework-free.
 

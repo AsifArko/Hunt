@@ -4,6 +4,8 @@ const state = {
   token: localStorage.getItem(TOKEN_KEY) || "",
   repositories: [],
   selectedRepoId: null,
+  currentMetrics: [],
+  chartModel: null,
 };
 
 const els = {
@@ -11,16 +13,69 @@ const els = {
   logoutBtn: document.getElementById("logout-btn"),
   saveTokenBtn: document.getElementById("save-token-btn"),
   tokenInput: document.getElementById("token-input"),
+  repoOwnerInput: document.getElementById("repo-owner-input"),
+  repoNameInput: document.getElementById("repo-name-input"),
+  repoIdInput: document.getElementById("repo-id-input"),
+  repoBranchInput: document.getElementById("repo-branch-input"),
+  connectRepoBtn: document.getElementById("connect-repo-btn"),
   repoList: document.getElementById("repo-list"),
-  claimsList: document.getElementById("claims-list"),
-  status: document.getElementById("status"),
   repoTitle: document.getElementById("repo-title"),
+  repoMeta: document.getElementById("repo-meta"),
+  chartTooltip: document.getElementById("chart-tooltip"),
   chart: document.getElementById("clone-chart"),
+  statTotalClones: document.getElementById("stat-total-clones"),
+  statUniqueCloners: document.getElementById("stat-unique-cloners"),
+  statMetricPoints: document.getElementById("stat-metric-points"),
+  statLastSync: document.getElementById("stat-last-sync"),
 };
 
-function setStatus(text, isError = false) {
-  els.status.textContent = text;
-  els.status.style.color = isError ? "#fca5a5" : "#93c5fd";
+function setStatus(text, level = "info") {
+  void text;
+  void level;
+}
+
+function formatDate(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString();
+}
+
+function formatShortDate(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function resetSummary() {
+  els.statTotalClones.textContent = "0";
+  els.statUniqueCloners.textContent = "0";
+  els.statMetricPoints.textContent = "0";
+  els.statLastSync.textContent = "-";
+  els.repoMeta.textContent = "Connect and select a repository to view analytics.";
+}
+
+function updateSummary(metrics) {
+  const totalClones = metrics.reduce((sum, item) => sum + Number(item.totalClones || 0), 0);
+  const totalUniqueCloners = metrics.reduce(
+    (sum, item) => sum + Number(item.uniqueCloners || 0),
+    0,
+  );
+  const lastCollectedAt = metrics.reduce((latest, item) => {
+    const candidate = item.collectedAt || item.windowEnd || item.windowStart;
+    if (!latest) return candidate;
+    return new Date(candidate).getTime() > new Date(latest).getTime() ? candidate : latest;
+  }, "");
+
+  els.statTotalClones.textContent = totalClones.toLocaleString();
+  els.statUniqueCloners.textContent = totalUniqueCloners.toLocaleString();
+  els.statMetricPoints.textContent = String(metrics.length);
+  els.statLastSync.textContent = formatDate(lastCollectedAt);
+}
+
+function updateRepoMeta(repo) {
+  els.repoMeta.textContent = `Repo ID: ${repo.githubRepoId} • Default Branch: ${repo.defaultBranch}`;
 }
 
 async function apiRequest(path, options = {}) {
@@ -54,7 +109,15 @@ function renderRepositoryList() {
   for (const repo of state.repositories) {
     const btn = document.createElement("button");
     btn.className = `repo-item ${repo.id === state.selectedRepoId ? "active" : ""}`;
-    btn.textContent = `${repo.owner}/${repo.name}`;
+    const label = document.createElement("span");
+    label.textContent = `${repo.owner}/${repo.name}`;
+    btn.appendChild(label);
+    if (repo.id === state.selectedRepoId) {
+      const check = document.createElement("span");
+      check.className = "repo-check";
+      check.textContent = "✓";
+      btn.appendChild(check);
+    }
     btn.addEventListener("click", () => {
       state.selectedRepoId = repo.id;
       renderRepositoryList();
@@ -64,83 +127,211 @@ function renderRepositoryList() {
   }
 }
 
-function renderClaims(items) {
-  if (!items || items.length === 0) {
-    els.claimsList.innerHTML = "<p>No claims found for this repository.</p>";
-    return;
+function chartSurface(canvas) {
+  const dpr = window.devicePixelRatio || 1;
+  const cssWidth = Math.max(canvas.clientWidth, 360);
+  const cssHeight = 320;
+  canvas.width = Math.floor(cssWidth * dpr);
+  canvas.height = Math.floor(cssHeight * dpr);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    return null;
   }
-  els.claimsList.innerHTML = "";
-  for (const claim of items) {
-    const div = document.createElement("div");
-    div.className = "claim-item";
-    div.innerHTML = `
-      <div><strong>ID:</strong> ${claim.id}</div>
-      <div><strong>User:</strong> ${claim.userId}</div>
-      <div><strong>Status:</strong> ${claim.verificationStatus}</div>
-      <div><strong>Confidence:</strong> ${claim.confidenceLevel}</div>
-    `;
-    els.claimsList.appendChild(div);
-  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, width: cssWidth, height: cssHeight };
 }
 
-function renderChart(metrics) {
-  const canvas = els.chart;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
+function hideChartTooltip() {
+  els.chartTooltip.hidden = true;
+}
 
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = "#94a3b8";
-  ctx.font = "12px sans-serif";
-
-  if (!metrics || metrics.length === 0) {
-    ctx.fillText("No clone metrics yet.", 20, 30);
+function handleChartHover(event) {
+  if (!state.chartModel) {
+    hideChartTooltip();
+    return;
+  }
+  const { rect, sorted, toX, toY, maxValue, padding, width, height } = state.chartModel;
+  const mouseX = event.clientX - rect.left;
+  const mouseY = event.clientY - rect.top;
+  if (
+    mouseX < padding.left ||
+    mouseX > width - padding.right ||
+    mouseY < padding.top ||
+    mouseY > height - padding.bottom
+  ) {
+    hideChartTooltip();
+    renderChart(state.currentMetrics);
     return;
   }
 
-  const points = metrics.map((item) => item.totalClones);
-  const max = Math.max(...points, 1);
-  const padding = 30;
-  const width = canvas.width - padding * 2;
-  const height = canvas.height - padding * 2;
+  let nearestIndex = 0;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < sorted.length; index += 1) {
+    const distance = Math.abs(toX(index) - mouseX);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestIndex = index;
+    }
+  }
 
-  ctx.strokeStyle = "#334155";
-  ctx.beginPath();
-  ctx.moveTo(padding, padding);
-  ctx.lineTo(padding, canvas.height - padding);
-  ctx.lineTo(canvas.width - padding, canvas.height - padding);
-  ctx.stroke();
+  const point = sorted[nearestIndex];
+  const x = toX(nearestIndex);
+  const totalY = toY(Number(point.totalClones || 0));
+  const uniqueY = toY(Number(point.uniqueCloners || 0));
 
-  ctx.strokeStyle = "#22d3ee";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  metrics.forEach((item, index) => {
-    const x = padding + (index / Math.max(metrics.length - 1, 1)) * width;
-    const y = canvas.height - padding - (item.totalClones / max) * height;
-    if (index === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  });
-  ctx.stroke();
+  renderChart(state.currentMetrics, { hoverIndex: nearestIndex });
+
+  const tooltip = els.chartTooltip;
+  tooltip.hidden = false;
+  tooltip.innerHTML = `
+    <strong>${formatDate(point.windowEnd || point.windowStart)}</strong><br />
+    Total clones: ${Number(point.totalClones || 0).toLocaleString()}<br />
+    Unique cloners: ${Number(point.uniqueCloners || 0).toLocaleString()}
+  `;
+
+  const left = Math.min(
+    Math.max(x + 14, 10),
+    width - tooltip.offsetWidth - 10,
+  );
+  const top = Math.max(Math.min(Math.min(totalY, uniqueY) - 50, height - 84), 10);
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${top}px`;
+  void maxValue;
+}
+
+function renderChart(metrics, options = {}) {
+  const { hoverIndex = null } = options;
+  const surface = chartSurface(els.chart);
+  if (!surface) return;
+
+  const { ctx, width, height } = surface;
+  ctx.clearRect(0, 0, width, height);
+  state.chartModel = null;
+
+  if (!metrics || metrics.length === 0) {
+    ctx.fillStyle = "#6b7280";
+    ctx.font = "13px sans-serif";
+    ctx.fillText("No clone metrics yet.", 18, 26);
+    hideChartTooltip();
+    return;
+  }
+
+  const sorted = [...metrics].sort(
+    (a, b) => new Date(a.windowStart).getTime() - new Date(b.windowStart).getTime(),
+  );
+  const maxValue = Math.max(
+    1,
+    ...sorted.map((item) => Math.max(Number(item.totalClones || 0), Number(item.uniqueCloners || 0))),
+  );
+
+  const padding = { top: 20, right: 14, bottom: 48, left: 46 };
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+
+  ctx.strokeStyle = "#e5e7eb";
+  ctx.lineWidth = 1;
+  const gridRows = 4;
+  for (let row = 0; row <= gridRows; row += 1) {
+    const y = padding.top + (row / gridRows) * plotHeight;
+    ctx.beginPath();
+    ctx.moveTo(padding.left, y);
+    ctx.lineTo(width - padding.right, y);
+    ctx.stroke();
+
+    const labelValue = Math.round(maxValue - (row / gridRows) * maxValue);
+    ctx.fillStyle = "#6b7280";
+    ctx.font = "11px sans-serif";
+    ctx.fillText(String(labelValue), 10, y + 3);
+  }
+
+  const toX = (index) =>
+    padding.left + (index / Math.max(sorted.length - 1, 1)) * plotWidth;
+  const toY = (value) =>
+    padding.top + (1 - value / maxValue) * plotHeight;
+
+  const drawSeries = (key, color, dash = []) => {
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 2;
+    ctx.setLineDash(dash);
+    ctx.beginPath();
+    sorted.forEach((item, index) => {
+      const x = toX(index);
+      const y = toY(Number(item[key] || 0));
+      if (index === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    ctx.setLineDash([]);
+    sorted.forEach((item, index) => {
+      const x = toX(index);
+      const y = toY(Number(item[key] || 0));
+      ctx.beginPath();
+      ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.restore();
+  };
+
+  drawSeries("totalClones", "#111827");
+  drawSeries("uniqueCloners", "#6b7280", [5, 4]);
+
+  if (hoverIndex !== null) {
+    const hoverX = toX(hoverIndex);
+    ctx.save();
+    ctx.strokeStyle = "rgba(31, 41, 55, 0.3)";
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(hoverX, padding.top);
+    ctx.lineTo(hoverX, height - padding.bottom);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  const tickCount = Math.min(6, sorted.length);
+  for (let i = 0; i < tickCount; i += 1) {
+    const index = Math.floor((i / Math.max(tickCount - 1, 1)) * (sorted.length - 1));
+    const item = sorted[index];
+    const x = toX(index);
+    const label = formatShortDate(item.windowEnd || item.windowStart);
+    ctx.fillStyle = "#6b7280";
+    ctx.font = "11px sans-serif";
+    const textWidth = ctx.measureText(label).width;
+    ctx.fillText(label, x - textWidth / 2, height - 20);
+  }
+
+  state.chartModel = {
+    rect: els.chart.getBoundingClientRect(),
+    sorted,
+    toX,
+    toY,
+    maxValue,
+    padding,
+    width,
+    height,
+  };
 }
 
 async function loadRepositoryDetails(repo) {
   try {
-    setStatus(`Loading details for ${repo.owner}/${repo.name}...`);
+    setStatus(`Loading details for ${repo.owner}/${repo.name}...`, "info");
     els.repoTitle.textContent = `${repo.owner}/${repo.name}`;
-    const [metricsResult, claimsResult] = await Promise.all([
-      apiRequest(`/v1/repos/${repo.id}/metrics/clones`),
-      apiRequest(`/v1/repos/${repo.id}/claims`),
-    ]);
-    renderChart(metricsResult.items || []);
-    renderClaims(claimsResult.items || []);
-    setStatus(`Loaded ${repo.owner}/${repo.name}`);
+    updateRepoMeta(repo);
+
+    const metricsResult = await apiRequest(`/v1/repos/${repo.id}/metrics/clones`);
+    state.currentMetrics = metricsResult.items || [];
+    renderChart(state.currentMetrics);
+    updateSummary(state.currentMetrics);
+    setStatus("Repository analytics ready.", "success");
   } catch (error) {
-    setStatus(error instanceof Error ? error.message : "Failed to load repo details", true);
+    setStatus(error instanceof Error ? error.message : "Failed to load repo details", "error");
   }
 }
 
 async function loadRepositories() {
   try {
-    setStatus("Loading repositories...");
+    setStatus("Loading repositories...", "info");
     const result = await apiRequest("/v1/repos");
     state.repositories = result.items || [];
     if (state.repositories.length > 0 && !state.selectedRepoId) {
@@ -152,11 +343,20 @@ async function loadRepositories() {
       await loadRepositoryDetails(selected);
     } else {
       renderChart([]);
-      renderClaims([]);
-      setStatus("No repositories connected.");
+      resetSummary();
+      hideChartTooltip();
+      setStatus("No repositories connected.", "info");
     }
   } catch (error) {
-    setStatus(error instanceof Error ? error.message : "Unable to load repositories", true);
+    const message = error instanceof Error ? error.message : "Unable to load repositories";
+    if (message.toLowerCase().includes("authentication required")) {
+      setStatus("Login with GitHub to load your repositories.", "info");
+      renderRepositoryList();
+      renderChart([]);
+      resetSummary();
+      return;
+    }
+    setStatus(message, "error");
   }
 }
 
@@ -169,7 +369,7 @@ async function login() {
     }
     window.location.href = body.authorizeUrl;
   } catch (error) {
-    setStatus(error instanceof Error ? error.message : "Login failed", true);
+    setStatus(error instanceof Error ? error.message : "Login failed", "error");
   }
 }
 
@@ -178,22 +378,60 @@ function saveToken() {
   state.token = token;
   if (token) {
     localStorage.setItem(TOKEN_KEY, token);
+    setStatus("Session token saved.", "success");
   } else {
     localStorage.removeItem(TOKEN_KEY);
+    setStatus("Session token removed.", "info");
   }
   void loadRepositories();
+}
+
+async function connectRepository() {
+  try {
+    const owner = els.repoOwnerInput.value.trim();
+    const name = els.repoNameInput.value.trim();
+    const githubRepoId = els.repoIdInput.value.trim();
+    const defaultBranch = els.repoBranchInput.value.trim() || "master";
+
+    if (!owner || !name || !githubRepoId) {
+      throw new Error("Owner, repository name, and GitHub repository ID are required.");
+    }
+
+    setStatus(`Connecting ${owner}/${name}...`, "info");
+    const result = await apiRequest("/v1/repos/connect", {
+      method: "POST",
+      body: JSON.stringify({
+        owner,
+        name,
+        githubRepoId,
+        defaultBranch,
+      }),
+    });
+    setStatus(
+      `Connected ${owner}/${name}. Store this project token securely: ${result.projectToken}`,
+      "success",
+    );
+    if (result?.repository?.id) {
+      state.selectedRepoId = result.repository.id;
+    }
+    await loadRepositories();
+  } catch (error) {
+    setStatus(error instanceof Error ? error.message : "Failed to connect repository", "error");
+  }
 }
 
 function logout() {
   state.token = "";
   state.repositories = [];
   state.selectedRepoId = null;
+  state.currentMetrics = [];
   localStorage.removeItem(TOKEN_KEY);
   els.tokenInput.value = "";
   renderRepositoryList();
   renderChart([]);
-  renderClaims([]);
-  setStatus("Logged out.");
+  resetSummary();
+  hideChartTooltip();
+  setStatus("Logged out.", "info");
   fetch("/auth/logout", { credentials: "same-origin" }).catch(() => undefined);
 }
 
@@ -201,14 +439,21 @@ function initialize() {
   els.tokenInput.value = state.token;
   els.loginBtn.addEventListener("click", () => void login());
   els.saveTokenBtn.addEventListener("click", saveToken);
+  els.connectRepoBtn.addEventListener("click", () => void connectRepository());
   els.logoutBtn.addEventListener("click", logout);
 
-  if (state.token) {
-    void loadRepositories();
-  } else {
-    setStatus("Login with GitHub or paste token.");
-    void loadRepositories();
-  }
+  window.addEventListener("resize", () => {
+    renderChart(state.currentMetrics);
+    hideChartTooltip();
+  });
+  els.chart.addEventListener("mousemove", handleChartHover);
+  els.chart.addEventListener("mouseleave", () => {
+    hideChartTooltip();
+    renderChart(state.currentMetrics);
+  });
+
+  resetSummary();
+  void loadRepositories();
 }
 
 initialize();
