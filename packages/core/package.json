@@ -1,0 +1,18 @@
+{
+  "name": "@hunt/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist dist-tests",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && tsc -p tsconfig.tests.json && node --test dist-tests/tests/**/*.test.js",
+    "lint": "node -e \"console.log('No lint setup yet for @hunt/core')\""
+  }
+}

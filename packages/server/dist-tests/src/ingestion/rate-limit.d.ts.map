@@ -1,0 +1,1 @@
+{"version":3,"file":"rate-limit.d.ts","sourceRoot":"","sources":["../../../src/ingestion/rate-limit.ts"],"names":[],"mappings":"AAOA,qBAAa,mBAAmB;IAI5B,OAAO,CAAC,QAAQ,CAAC,WAAW;IAC5B,OAAO,CAAC,QAAQ,CAAC,QAAQ;IAJ3B,OAAO,CAAC,QAAQ,CAAC,QAAQ,CAAoC;gBAG1C,WAAW,EAAE,MAAM,EACnB,QAAQ,EAAE,MAAM;IAG5B,KAAK,CAAC,GAAG,EAAE,MAAM,GAAG,IAAI;CAchC"}

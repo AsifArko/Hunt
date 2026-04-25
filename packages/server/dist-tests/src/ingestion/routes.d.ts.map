@@ -1,0 +1,1 @@
+{"version":3,"file":"routes.d.ts","sourceRoot":"","sources":["../../../src/ingestion/routes.ts"],"names":[],"mappings":"AAGA,OAAO,KAAK,EAAE,MAAM,EAAE,MAAM,mBAAmB,CAAC;AAEhD,OAAO,EAAE,gBAAgB,EAAE,MAAM,cAAc,CAAC;AAShD,wBAAgB,uBAAuB,CACrC,MAAM,EAAE,MAAM,EACd,gBAAgB,EAAE,gBAAgB,GACjC,IAAI,CA0BN"}

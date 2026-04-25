@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hunt Dashboard</title>
+    <link rel="stylesheet" href="/dashboard/styles.css" />
+  </head>
+  <body>
+    <header class="page-header">
+      <h1>Hunt Dashboard</h1>
+      <div class="auth-controls">
+        <button id="login-btn" type="button">Login with GitHub</button>
+        <button id="logout-btn" type="button">Logout</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <aside class="sidebar">
+        <h2>Repositories</h2>
+        <div class="token-box">
+          <label for="token-input">Session token</label>
+          <textarea id="token-input" rows="3" placeholder="Paste token from /auth/github/callback response"></textarea>
+          <button id="save-token-btn" type="button">Save token</button>
+        </div>
+        <div id="repo-list" class="repo-list"></div>
+      </aside>
+
+      <section class="content">
+        <div id="status" class="status"></div>
+        <article>
+          <h2 id="repo-title">Repository details</h2>
+          <canvas id="clone-chart" width="800" height="260"></canvas>
+        </article>
+        <article>
+          <h3>Identity claims</h3>
+          <div id="claims-list"></div>
+        </article>
+      </section>
+    </main>
+
+    <script type="module" src="/dashboard/app.js"></script>
+  </body>
+</html>

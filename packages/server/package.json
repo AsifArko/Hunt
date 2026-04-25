@@ -1,0 +1,25 @@
+{
+  "name": "@hunt/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace @hunt/core && tsc -p tsconfig.json",
+    "clean": "rm -rf dist dist-tests",
+    "typecheck": "npm run build --workspace @hunt/core && tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && tsc -p tsconfig.tests.json && node --test dist-tests/tests/**/*.test.js",
+    "dev": "tsx src/main.ts",
+    "start": "node dist/main.js",
+    "lint": "node -e \"console.log('No lint setup yet for @hunt/server')\""
+  },
+  "dependencies": {
+    "@hunt/core": "0.1.0",
+    "dotenv": "^17.2.3",
+    "mongodb": "^6.20.0"
+  }
+}

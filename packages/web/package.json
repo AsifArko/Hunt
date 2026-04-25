@@ -1,0 +1,21 @@
+{
+  "name": "@hunt/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node -e \"console.log('No tests yet for @hunt/web')\"",
+    "lint": "node -e \"console.log('No lint setup yet for @hunt/web')\""
+  },
+  "dependencies": {
+    "@hunt/core": "0.1.0"
+  }
+}

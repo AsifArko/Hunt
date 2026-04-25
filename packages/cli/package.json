@@ -1,0 +1,24 @@
+{
+  "name": "@hunt/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "bin": {
+    "hunt": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node -e \"console.log('No tests yet for @hunt/cli')\"",
+    "lint": "node -e \"console.log('No lint setup yet for @hunt/cli')\""
+  },
+  "dependencies": {
+    "@hunt/core": "0.1.0"
+  }
+}
