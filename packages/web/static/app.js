@@ -2,10 +2,16 @@ const TOKEN_KEY = "hunt_dashboard_token";
 
 const state = {
   token: localStorage.getItem(TOKEN_KEY) || "",
+  isAuthenticated: false,
   repositories: [],
   selectedRepoId: null,
   currentMetrics: [],
   chartModel: null,
+  githubDiscovery: {
+    owners: [],
+    repositories: [],
+    branchMap: {},
+  },
 };
 
 const els = {
@@ -13,10 +19,19 @@ const els = {
   logoutBtn: document.getElementById("logout-btn"),
   saveTokenBtn: document.getElementById("save-token-btn"),
   tokenInput: document.getElementById("token-input"),
+  repoOwnerCombo: document.getElementById("repo-owner-combo"),
   repoOwnerInput: document.getElementById("repo-owner-input"),
+  repoOwnerMenu: document.getElementById("repo-owner-menu"),
+  repoOwnerToggle: document.getElementById("repo-owner-toggle"),
+  repoNameCombo: document.getElementById("repo-name-combo"),
   repoNameInput: document.getElementById("repo-name-input"),
+  repoNameMenu: document.getElementById("repo-name-menu"),
+  repoNameToggle: document.getElementById("repo-name-toggle"),
   repoIdInput: document.getElementById("repo-id-input"),
+  repoBranchCombo: document.getElementById("repo-branch-combo"),
   repoBranchInput: document.getElementById("repo-branch-input"),
+  repoBranchMenu: document.getElementById("repo-branch-menu"),
+  repoBranchToggle: document.getElementById("repo-branch-toggle"),
   connectRepoBtn: document.getElementById("connect-repo-btn"),
   repoList: document.getElementById("repo-list"),
   repoTitle: document.getElementById("repo-title"),
@@ -32,6 +47,10 @@ const els = {
 function setStatus(text, level = "info") {
   void text;
   void level;
+}
+
+function updateAuthControls() {
+  els.loginBtn.hidden = state.isAuthenticated;
 }
 
 function formatDate(value) {
@@ -76,6 +95,214 @@ function updateSummary(metrics) {
 
 function updateRepoMeta(repo) {
   els.repoMeta.textContent = `Repo ID: ${repo.githubRepoId} • Default Branch: ${repo.defaultBranch}`;
+}
+
+const comboState = {
+  openCombo: null,
+};
+
+function isConnectedRepo(owner, name) {
+  return state.repositories.some(
+    (repo) =>
+      repo.owner.toLowerCase() === owner.toLowerCase() &&
+      repo.name.toLowerCase() === name.toLowerCase(),
+  );
+}
+
+function optionsForCombo(comboId) {
+  if (comboId === "owner") {
+    return state.githubDiscovery.owners
+      .filter((owner) =>
+        state.githubDiscovery.repositories.some(
+          (repo) =>
+            repo.owner.toLowerCase() === owner.toLowerCase() &&
+            !isConnectedRepo(repo.owner, repo.name),
+        )
+      )
+      .sort((a, b) => a.localeCompare(b))
+      .map((owner) => ({ value: owner, disabled: false }));
+  }
+  if (comboId === "repo") {
+    const owner = els.repoOwnerInput.value.trim();
+    if (!owner) return [];
+    return state.githubDiscovery.repositories
+      .filter((item) => item.owner.toLowerCase() === owner.toLowerCase())
+      .map((item) => ({
+        value: item.name,
+        disabled: isConnectedRepo(item.owner, item.name),
+      }))
+      .sort((a, b) => a.value.localeCompare(b.value));
+  }
+  if (comboId === "branch") {
+    const owner = els.repoOwnerInput.value.trim();
+    const repoName = els.repoNameInput.value.trim();
+    if (!owner || !repoName) return [];
+    const discovered = findDiscoveredRepo(owner, repoName);
+    if (!discovered) return [];
+    const branches = state.githubDiscovery.branchMap[`${discovered.owner}/${discovered.name}`] || [];
+    return branches.map((branch) => ({ value: branch, disabled: false }));
+  }
+  return [];
+}
+
+function comboElements(comboId) {
+  if (comboId === "owner") {
+    return { combo: els.repoOwnerCombo, menu: els.repoOwnerMenu, input: els.repoOwnerInput };
+  }
+  if (comboId === "repo") {
+    return { combo: els.repoNameCombo, menu: els.repoNameMenu, input: els.repoNameInput };
+  }
+  return { combo: els.repoBranchCombo, menu: els.repoBranchMenu, input: els.repoBranchInput };
+}
+
+function closeCombo(comboId) {
+  const { combo, menu } = comboElements(comboId);
+  combo.classList.remove("open");
+  menu.hidden = true;
+  menu.innerHTML = "";
+  if (comboState.openCombo === comboId) {
+    comboState.openCombo = null;
+  }
+}
+
+function closeAllCombos() {
+  closeCombo("owner");
+  closeCombo("repo");
+  closeCombo("branch");
+}
+
+function openCombo(comboId) {
+  const { combo, menu, input } = comboElements(comboId);
+  const baseOptions = optionsForCombo(comboId);
+  const query = input.value.trim().toLowerCase();
+  const filtered = query
+    ? baseOptions.filter((option) => option.value.toLowerCase().includes(query))
+    : baseOptions;
+
+  closeAllCombos();
+  combo.classList.add("open");
+  menu.hidden = false;
+  menu.innerHTML = "";
+
+  if (filtered.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "combo-empty";
+    empty.textContent = "No matches found";
+    menu.appendChild(empty);
+    comboState.openCombo = comboId;
+    return;
+  }
+
+  for (const value of filtered) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "combo-option";
+    button.textContent = value.value;
+    if (value.disabled) {
+      button.disabled = true;
+      button.classList.add("disabled");
+      button.title = "Already connected";
+    }
+    button.addEventListener("click", () => {
+      if (value.disabled) return;
+      input.value = value.value;
+      if (comboId === "owner") handleOwnerInput();
+      if (comboId === "repo") handleRepoInput();
+      if (comboId === "branch") {
+        // Keep branch input editable while allowing quick selection.
+      }
+      closeCombo(comboId);
+    });
+    menu.appendChild(button);
+  }
+  comboState.openCombo = comboId;
+}
+
+function clearConnectForm() {
+  els.repoOwnerInput.value = "";
+  els.repoNameInput.value = "";
+  els.repoIdInput.value = "";
+  els.repoBranchInput.value = "master";
+  closeAllCombos();
+}
+
+function findDiscoveredRepo(owner, repoName) {
+  return state.githubDiscovery.repositories.find(
+    (item) =>
+      item.owner.toLowerCase() === owner.toLowerCase() &&
+      item.name.toLowerCase() === repoName.toLowerCase(),
+  );
+}
+
+function applyDiscoveredRepo(owner, repoName) {
+  const discovered = findDiscoveredRepo(owner, repoName);
+  if (!discovered) {
+    if (!els.repoBranchInput.value.trim()) {
+      els.repoBranchInput.value = "master";
+    }
+    els.repoIdInput.value = "";
+    return;
+  }
+  els.repoNameInput.value = discovered.name;
+  els.repoIdInput.value = String(discovered.id);
+  els.repoBranchInput.value = discovered.defaultBranch || "master";
+}
+
+function handleOwnerInput() {
+  const owner = els.repoOwnerInput.value.trim();
+  if (!owner) {
+    els.repoNameInput.value = "";
+    els.repoIdInput.value = "";
+    els.repoBranchInput.value = "master";
+    return;
+  }
+  applyDiscoveredRepo(owner, els.repoNameInput.value.trim());
+}
+
+function handleRepoInput() {
+  const owner = els.repoOwnerInput.value.trim();
+  const repoName = els.repoNameInput.value.trim();
+  if (!owner || !repoName) {
+    els.repoIdInput.value = "";
+    if (!els.repoBranchInput.value.trim()) {
+      els.repoBranchInput.value = "master";
+    }
+    return;
+  }
+  applyDiscoveredRepo(owner, repoName);
+}
+
+async function loadGitHubDiscovery() {
+  if (!state.isAuthenticated) {
+    state.githubDiscovery = {
+      owners: [],
+      repositories: [],
+      branchMap: {},
+    };
+    clearConnectForm();
+    return;
+  }
+
+  try {
+    const result = await apiRequest("/v1/repos/discovery/github");
+    const owners = Array.isArray(result.owners) ? result.owners : [];
+    const repositories = Array.isArray(result.repositories) ? result.repositories : [];
+    const branchMap = typeof result.branchMap === "object" && result.branchMap
+      ? result.branchMap
+      : {};
+    state.githubDiscovery = {
+      owners,
+      repositories,
+      branchMap,
+    };
+    if (!els.repoOwnerInput.value.trim() && owners.length > 0) {
+      els.repoOwnerInput.value = owners[0];
+    }
+    handleOwnerInput();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to load repository options";
+    setStatus(message, "error");
+  }
 }
 
 async function apiRequest(path, options = {}) {
@@ -333,6 +560,8 @@ async function loadRepositories() {
   try {
     setStatus("Loading repositories...", "info");
     const result = await apiRequest("/v1/repos");
+    state.isAuthenticated = true;
+    updateAuthControls();
     state.repositories = result.items || [];
     if (state.repositories.length > 0 && !state.selectedRepoId) {
       state.selectedRepoId = state.repositories[0].id;
@@ -350,10 +579,13 @@ async function loadRepositories() {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to load repositories";
     if (message.toLowerCase().includes("authentication required")) {
+      state.isAuthenticated = false;
+      updateAuthControls();
       setStatus("Login with GitHub to load your repositories.", "info");
       renderRepositoryList();
       renderChart([]);
       resetSummary();
+      clearConnectForm();
       return;
     }
     setStatus(message, "error");
@@ -415,18 +647,22 @@ async function connectRepository() {
       state.selectedRepoId = result.repository.id;
     }
     await loadRepositories();
+    await loadGitHubDiscovery();
   } catch (error) {
     setStatus(error instanceof Error ? error.message : "Failed to connect repository", "error");
   }
 }
 
 function logout() {
+  state.isAuthenticated = false;
+  updateAuthControls();
   state.token = "";
   state.repositories = [];
   state.selectedRepoId = null;
   state.currentMetrics = [];
   localStorage.removeItem(TOKEN_KEY);
   els.tokenInput.value = "";
+  clearConnectForm();
   renderRepositoryList();
   renderChart([]);
   resetSummary();
@@ -437,10 +673,52 @@ function logout() {
 
 function initialize() {
   els.tokenInput.value = state.token;
+  updateAuthControls();
   els.loginBtn.addEventListener("click", () => void login());
   els.saveTokenBtn.addEventListener("click", saveToken);
   els.connectRepoBtn.addEventListener("click", () => void connectRepository());
   els.logoutBtn.addEventListener("click", logout);
+  els.repoOwnerInput.addEventListener("input", () => {
+    handleOwnerInput();
+    openCombo("owner");
+  });
+  els.repoNameInput.addEventListener("input", () => {
+    handleRepoInput();
+    openCombo("repo");
+  });
+  els.repoBranchInput.addEventListener("input", () => {
+    openCombo("branch");
+  });
+
+  els.repoOwnerInput.addEventListener("focus", () => openCombo("owner"));
+  els.repoNameInput.addEventListener("focus", () => openCombo("repo"));
+  els.repoBranchInput.addEventListener("focus", () => openCombo("branch"));
+
+  els.repoOwnerToggle.addEventListener("click", () => {
+    if (comboState.openCombo === "owner") closeCombo("owner");
+    else openCombo("owner");
+  });
+  els.repoNameToggle.addEventListener("click", () => {
+    if (comboState.openCombo === "repo") closeCombo("repo");
+    else openCombo("repo");
+  });
+  els.repoBranchToggle.addEventListener("click", () => {
+    if (comboState.openCombo === "branch") closeCombo("branch");
+    else openCombo("branch");
+  });
+
+  document.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Node)) return;
+    if (
+      els.repoOwnerCombo.contains(target) ||
+      els.repoNameCombo.contains(target) ||
+      els.repoBranchCombo.contains(target)
+    ) {
+      return;
+    }
+    closeAllCombos();
+  });
 
   window.addEventListener("resize", () => {
     renderChart(state.currentMetrics);
@@ -453,7 +731,7 @@ function initialize() {
   });
 
   resetSummary();
-  void loadRepositories();
+  void loadRepositories().then(() => loadGitHubDiscovery());
 }
 
 initialize();

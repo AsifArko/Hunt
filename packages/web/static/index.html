@@ -24,18 +24,67 @@
         <div class="panel connect-box">
           <h3>Connect Repository</h3>
           <label for="repo-owner-input">Owner</label>
-          <input id="repo-owner-input" type="text" placeholder="AsifArko" />
+          <div class="combo" id="repo-owner-combo">
+            <input
+              id="repo-owner-input"
+              type="text"
+              placeholder="Github username"
+              autocomplete="off"
+            />
+            <button
+              id="repo-owner-toggle"
+              class="combo-toggle"
+              type="button"
+              aria-label="Toggle owner options"
+            >
+              ▼
+            </button>
+            <div id="repo-owner-menu" class="combo-menu" hidden></div>
+          </div>
           <label for="repo-name-input">Repository Name</label>
-          <input id="repo-name-input" type="text" placeholder="clone-intel" />
+          <div class="combo" id="repo-name-combo">
+            <input
+              id="repo-name-input"
+              type="text"
+              placeholder="Repository name"
+              autocomplete="off"
+            />
+            <button
+              id="repo-name-toggle"
+              class="combo-toggle"
+              type="button"
+              aria-label="Toggle repository options"
+            >
+              ▼
+            </button>
+            <div id="repo-name-menu" class="combo-menu" hidden></div>
+          </div>
           <label for="repo-id-input">GitHub Repository ID</label>
-          <input id="repo-id-input" type="text" placeholder="123456789" />
-          <label for="repo-branch-input">Default Branch</label>
           <input
-            id="repo-branch-input"
+            id="repo-id-input"
             type="text"
-            placeholder="master"
-            value="master"
+            placeholder="123456789"
+            readonly
           />
+          <label for="repo-branch-input">Default Branch</label>
+          <div class="combo" id="repo-branch-combo">
+            <input
+              id="repo-branch-input"
+              type="text"
+              placeholder="master"
+              value="master"
+              autocomplete="off"
+            />
+            <button
+              id="repo-branch-toggle"
+              class="combo-toggle"
+              type="button"
+              aria-label="Toggle branch options"
+            >
+              ▼
+            </button>
+            <div id="repo-branch-menu" class="combo-menu" hidden></div>
+          </div>
           <button id="connect-repo-btn" type="button">
             Connect Repository
           </button>

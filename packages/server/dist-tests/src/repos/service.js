@@ -7,10 +7,34 @@ function requireText(value, field) {
     }
     return value.trim();
 }
-function assertOwnerAccess(owner, actor) {
-    if (owner !== actor.username) {
-        throw new HttpError(403, "FORBIDDEN", "Repository access denied.");
+async function fetchAccessibleOwners(actor) {
+    const owners = new Set([actor.username]);
+    const headers = {
+        accept: "application/vnd.github+json",
+        "user-agent": "hunt-server",
+    };
+    const serviceToken = process.env.HUNT_GITHUB_TOKEN?.trim();
+    if (serviceToken) {
+        headers.authorization = `Bearer ${serviceToken}`;
     }
+    try {
+        const response = await fetch(`https://api.github.com/users/${actor.username}/orgs`, {
+            headers,
+        });
+        if (!response.ok) {
+            return owners;
+        }
+        const organizations = (await response.json());
+        for (const organization of organizations) {
+            if (organization.login) {
+                owners.add(organization.login);
+            }
+        }
+    }
+    catch {
+        return owners;
+    }
+    return owners;
 }
 export class RepositoryService {
     options;
@@ -26,7 +50,10 @@ export class RepositoryService {
         const name = requireText(body.name, "name");
         const githubRepoId = requireText(body.githubRepoId, "githubRepoId");
         const defaultBranch = requireText(body.defaultBranch, "defaultBranch");
-        assertOwnerAccess(owner, actor);
+        const accessibleOwners = await fetchAccessibleOwners(actor);
+        if (!accessibleOwners.has(owner)) {
+            throw new HttpError(403, "FORBIDDEN", "Repository access denied.");
+        }
         const existing = await this.options.repositoryRepository.findByOwnerAndName(owner, name);
         if (existing) {
             throw new HttpError(409, "CONFLICT", "Repository is already connected.");
@@ -51,15 +78,19 @@ export class RepositoryService {
         };
     }
     async list(actor) {
-        const repos = await this.options.repositoryRepository.listByOwnerId(actor.username, 100);
-        return repos.map(toRepositoryResponse);
+        const accessibleOwners = await fetchAccessibleOwners(actor);
+        const all = await Promise.all(Array.from(accessibleOwners).map((owner) => this.options.repositoryRepository.listByOwnerId(owner, 100)));
+        return all.flat().map(toRepositoryResponse);
     }
     async getById(actor, repoId) {
         const repository = await this.options.repositoryRepository.findById(repoId);
         if (!repository) {
             throw new HttpError(404, "NOT_FOUND", "Repository not found.");
         }
-        assertOwnerAccess(repository.owner, actor);
+        const accessibleOwners = await fetchAccessibleOwners(actor);
+        if (!accessibleOwners.has(repository.owner)) {
+            throw new HttpError(403, "FORBIDDEN", "Repository access denied.");
+        }
         return toRepositoryResponse(repository);
     }
     async updateSettings(actor, repoId, payload) {
@@ -76,7 +107,10 @@ export class RepositoryService {
         if (!existing) {
             throw new HttpError(404, "NOT_FOUND", "Repository not found.");
         }
-        assertOwnerAccess(existing.owner, actor);
+        const accessibleOwners = await fetchAccessibleOwners(actor);
+        if (!accessibleOwners.has(existing.owner)) {
+            throw new HttpError(403, "FORBIDDEN", "Repository access denied.");
+        }
         const nextSettings = {
             ...existing.settings,
             ...(body.privacyMode ? { privacyMode: body.privacyMode } : {}),
@@ -98,7 +132,10 @@ export class RepositoryService {
         if (!repository) {
             throw new HttpError(404, "NOT_FOUND", "Repository not found.");
         }
-        assertOwnerAccess(repository.owner, actor);
+        const accessibleOwners = await fetchAccessibleOwners(actor);
+        if (!accessibleOwners.has(repository.owner)) {
+            throw new HttpError(403, "FORBIDDEN", "Repository access denied.");
+        }
         const metrics = await this.options.cloneMetricRepository.listByRepository(repoId);
         return metrics.map((metric) => ({
             id: metric.id,
@@ -118,7 +155,10 @@ export class RepositoryService {
         if (!repository) {
             throw new HttpError(404, "NOT_FOUND", "Repository not found.");
         }
-        assertOwnerAccess(repository.owner, actor);
+        const accessibleOwners = await fetchAccessibleOwners(actor);
+        if (!accessibleOwners.has(repository.owner)) {
+            throw new HttpError(403, "FORBIDDEN", "Repository access denied.");
+        }
         const claims = await this.options.identityClaimRepository.listByRepository(repoId, 100);
         return claims.map((claim) => ({
             id: claim.id,
